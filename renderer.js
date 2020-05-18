@@ -2,12 +2,12 @@
 
 const { app, BrowserWindow } = require("electron");
 const path = require("path");
+const url = require("url");
 
 // Keep a global reference of the mainWindowdow object, if you don't, the mainWindowdow will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow = null;
 let subpy = null;
-let subreact = null;
 
 const PY_DIST_FOLDER = "dist-python"; // python distributable folder
 const PY_SRC_FOLDER = "tisapi"; // path to the python source
@@ -40,23 +40,24 @@ const startPythonSubprocess = () => {
   }
 };
 
-const startReactSubprocess = () => {
-  // TODO figure out how to start react subprocess
-};
-
-const killSubprocesses = main_pid => {
+const killPythonSubprocess = main_pid => {
   const python_script_name = path.basename(getPythonScriptPath());
-  // TODO figure out how to kill react subprocess
   let cleanup_completed = false;
   const psTree = require("ps-tree");
   psTree(main_pid, function(err, children) {
     let python_pids = children
       .filter(function(el) {
-        return el.COMMAND == python_script_name;
+        if (isRunningInBundle()) {
+          return el.COMMAND === python_script_name;
+        }
+        return el.COMMAND === "python" && el.PPID === main_pid.toString();
       })
       .map(function(p) {
         return p.PID;
       });
+    console.log(children)
+    console.log(main_pid)
+    console.log(python_pids)
     // kill all the spawned python processes
     python_pids.forEach(function(pid) {
       process.kill(pid);
@@ -86,8 +87,16 @@ const createMainWindow = () => {
     resizeable: true
   });
 
+  // Make sure that API server is running
+
   // Load the index page
-  mainWindow.loadURL("http://localhost:3000/");
+  mainWindow.loadURL(
+    url.format({
+      pathname: path.join(__dirname, 'build/index.html'),
+      protocol: 'file:',
+      slashes: true
+    })
+  )
 
   // Open the DevTools.
   //mainWindow.webContents.openDevTools();
@@ -105,7 +114,6 @@ const createMainWindow = () => {
 app.on("ready", function() {
   // start the backend server
   startPythonSubprocess();
-  startReactSubprocess();
   createMainWindow();
 
   // TODO make sure that CLTK model files are available
@@ -123,7 +131,7 @@ app.on("window-all-closed", () => {
   // to stay active until the user quits explicitly with Cmd + Q
   if (process.platform !== "darwin") {
     let main_process_pid = process.pid;
-    killSubprocesses(main_process_pid).then(() => {
+    killPythonSubprocess(main_process_pid).then(() => {
       app.quit();
     });
   }
@@ -134,9 +142,6 @@ app.on("activate", () => {
   // dock icon is clicked and there are no other windows open.
   if (subpy === null) {
     startPythonSubprocess();
-  }
-  if (subreact === null) {
-    startReactSubprocess();
   }
   if (mainWindow === null) {
     createWindow();
