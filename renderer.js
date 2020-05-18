@@ -55,9 +55,6 @@ const killPythonSubprocess = main_pid => {
       .map(function(p) {
         return p.PID;
       });
-    console.log(children)
-    console.log(main_pid)
-    console.log(python_pids)
     // kill all the spawned python processes
     python_pids.forEach(function(pid) {
       process.kill(pid);
