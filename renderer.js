@@ -4,14 +4,15 @@ const { app, BrowserWindow } = require("electron");
 const path = require("path");
 const url = require("url");
 
-// Keep a global reference of the mainWindowdow object, if you don't, the mainWindowdow will
+// Keep a global reference of the mainWindow object, if you don't, the
+// mainWindow will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow = null;
 let subpy = null;
 
 const PY_DIST_FOLDER = "dist-python"; // python distributable folder
 const PY_SRC_FOLDER = "tisapi"; // path to the python source
-const PY_MODULE = "run_app.py"; // the name of the main module
+const PY_MODULE = "run_app"; // the name of the main module
 
 const isRunningInBundle = () => {
   return require("fs").existsSync(path.join(__dirname, PY_DIST_FOLDER));
@@ -19,7 +20,7 @@ const isRunningInBundle = () => {
 
 const getPythonScriptPath = () => {
   if (!isRunningInBundle()) {
-    return path.join(__dirname, PY_SRC_FOLDER, PY_MODULE);
+    return path.join(__dirname, PY_SRC_FOLDER, PY_MODULE + ".py");
   }
   if (process.platform === "win32") {
     return path.join(
@@ -34,7 +35,10 @@ const getPythonScriptPath = () => {
 const startPythonSubprocess = () => {
   let script = getPythonScriptPath();
   if (isRunningInBundle()) {
-    subpy = require("child_process").execFile(script, []);
+    subpy = require("child_process").spawn(
+      script,
+      [],
+    );
   } else {
     subpy = require("child_process").spawn("python", [script]);
   }
@@ -89,7 +93,7 @@ const createMainWindow = () => {
   // Load the index page
   mainWindow.loadURL(
     url.format({
-      pathname: path.join(__dirname, 'build/index.html'),
+      pathname: path.join(__dirname, "frontend", "index.html"),
       protocol: 'file:',
       slashes: true
     })
