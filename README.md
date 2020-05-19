@@ -6,8 +6,31 @@ Thanks to https://github.com/matbloch/electron-flask for initial guidance.
 
 ## Pre-steps
 
-#. Clone https://github.com/jeffkinnison/tesserae-frontend
-#. Install `tesserae-frontend` dependencies with `npm install`
-#. Change `REACT_APP_REST_API_URL` in `.env` in `tesserae-frontend` to `"http://localhost:4040"`
-#. Build `build` directory in `tesserae-frontend` with `npm run build`
-#. Copy `build` directory from `tesserae-frontend` into this repository's directory (`cp -r /path/to/tesserae-frontend/build ...`)
+```
+# begin by cd'ing into the directory where you would like store the code
+git clone https://github.com/nOkuda/electron-tesserae        # clone this repo
+git clone https://github.com/jeffkinnison/tesserae-frontend  # clone frontend
+cd tesserae-frontend
+npm install     # install frontend dependencies
+# change .env file so that REACT_APP_REST_API_URL is set to
+# "http://localhost:4040"
+# change package.json so that "homepage" is set to "./"
+npm run build   # build frontend
+cp -r build ../electron-tesserae/frontend    # bundle built frontend
+cd ..
+python3 -m venv etbuild           # create virtual environment
+source etbuild/bin/activate
+pip install -U pip
+cd electron-tesserae
+pip install -r requirements.txt   # install python dependencies
+
+## Running in Development
+
+`npm start`
+
+## Create and Run Standalone Application
+
+```
+npm run package
+./dist/Tesserae...
+```
