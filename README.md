@@ -23,6 +23,7 @@ source etbuild/bin/activate
 pip install -U pip
 cd electron-tesserae
 pip install -r requirements.txt   # install python dependencies
+```
 
 ## Running in Development
 
@@ -34,3 +35,9 @@ pip install -r requirements.txt   # install python dependencies
 npm run package
 ./dist/Tesserae...
 ```
+
+## Other Hints
+
+Take a look at `package.json` in this repo to see what the npm scripts actually do.
+
+Because of the way `renderer.js` works, if you've build the Python distributable and run the development server, you'll actually be running with the Python distributable and not with the Python script.
