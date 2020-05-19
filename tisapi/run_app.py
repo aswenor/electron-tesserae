@@ -26,9 +26,9 @@ for sig in [signal.SIGHUP, signal.SIGINT, signal.SIGTERM]:
 db_config = {
     'MONGO_HOSTNAME': 'localhost',
     'MONGO_PORT': 27017,
-    'MONGO_USER': 'me',
+    'MONGO_USER': '',
     'MONGO_PASSWORD': '',
-    'DB_NAME': 'exampledb'
+    'DB_NAME': 'bigingest'
 }
 
 db_cred = {
