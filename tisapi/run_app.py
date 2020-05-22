@@ -24,7 +24,7 @@ def read_config():
         with open(configpath, 'r', encoding='utf-8') as ifh:
             config.read_file(ifh)
     default_db_config = {
-        'port': '27017',
+        'port': '40404',
         'user': '',
         'password': '',
         'db': 'tesserae'
@@ -55,7 +55,7 @@ atexit.register(a_searcher.cleanup)
 
 app_db_config = {
     'MONGO_HOSTNAME': db_cred['host'],
-    'MONGO_PORT': db_cred['port'],
+    'MONGO_PORT': int(db_cred['port']),
     'MONGO_USER': db_cred['user'],
     'MONGO_PASSWORD': db_cred['password'],
     'DB_NAME': db_cred['db']

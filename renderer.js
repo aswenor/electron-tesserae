@@ -1,8 +1,11 @@
 "use strict";
 
 const { app, BrowserWindow } = require("electron");
+const child_process = require("child_process");
+const fs = require("fs");
+const mkdirp = require("mkdirp");
+const os = require("os");
 const path = require("path");
-const url = require("url");
 
 // Keep a global reference of the mainWindow object, if you don't, the
 // mainWindow will
@@ -14,15 +17,208 @@ const PY_DIST_FOLDER = "dist-python"; // python distributable folder
 const PY_SRC_FOLDER = "tisapi"; // path to the python source
 const PY_MODULE = "run_app"; // the name of the main module
 
+const getMongodPath = () => {
+  const mongodPath = path.join(MONGO_INSTALL_PATH, "bin", "mongod");
+  if (os.platform() === "win32") {
+    return mongodPath + ".exe";
+  }
+  return mongodPath;
+};
+
+const TESS_HOME = path.join(os.homedir(), "tesserae"); // application home
+const MONGO_INSTALL_PATH = path.join(TESS_HOME, "mongodb");
+const MONGOD_PATH = getMongodPath();
+const MONGODB_DBPATH = path.join(TESS_HOME, "tessdb");
+
+const getMongoDownloadUrl = () => {
+  const osname = os.platform();
+  if (osname === "win32") {
+    return "https://fastdl.mongodb.org/win32/mongodb-win32-x86_64-2012plus-4.2.6.zip";
+  }
+  if (osname === "darwin") {
+    return "https://fastdl.mongodb.org/osx/mongodb-macos-x86_64-4.2.6.tgz";
+  }
+  if (osname === "linux") {
+    // assume Ubuntu 18.04 LTS
+    return "https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu1804-4.2.6.tgz";
+  }
+  throw "Unsupported operating system";
+};
+
+const renameMongoInstall = (downloadDest, postInit) => {
+  const untarredPath = downloadDest.slice(0, -4);
+  fs.renameSync(untarredPath, MONGO_INSTALL_PATH);
+  console.log(`\tMongoDB installed (${MONGOD_PATH})`);
+  postInit();
+};
+
+const unpackMongoInstall = (downloadDest, postInit) => {
+  console.log(`\tMongoDB downloaded; now installing`);
+  if (path.extname(downloadDest) === ".zip") {
+    const downloadedZipFile = require("yauzl").open(
+      downloadDest,
+      {"lazyEntries": true},
+      (err, zipfile) => {
+        if (err) {
+          console.error(`Error occurred while opening ${downloadDest}`);
+          throw err;
+        }
+        zipfile.readEntry();
+        zipfile.on("entry", (entry) => {
+          if (/\/$/.test(entry.fileName)) {
+            // ignore directory entries, since they may or may not be there
+            zipfile.readEntry();
+          } else {
+            // make sure that output directory exists
+            const neededDir = path.join(
+              TESS_HOME,
+              path.dirname(entry.fileName)
+            );
+            if (!fs.existsSync(neededDir)) {
+              mkdirp.sync(neededDir);
+            }
+            zipfile.openReadStream(entry, (err, readStream) => {
+              if (err) {
+                console.error(`Error occurred while reading ${entry.fileName}`);
+                throw err;
+              }
+              readStream.on("end", () => {
+                zipfile.readEntry();
+              });
+              readStream.on("error", (err) => {
+                console.error(
+                  `Error occurred while decompressing ${entry.fileName}`
+                );
+                throw err;
+              });
+              const outpath = path.join(
+                TESS_HOME,
+                entry.fileName
+              );
+              const outfile = fs.createWriteStream(outpath);
+              readStream.pipe(outfile);
+            });
+          }
+        });
+      }
+    );
+    downloadedZipFile.on("close", () => {
+      renameMongoInstall(downloadDest, postInit);
+    });
+    downloadedZipFile.on("error", (err) => {
+      console.error(`Error occurred in unzipping ${downloadDest}`);
+      throw err;
+    });
+  } else {
+    // assume .tgz
+    const downloadedFileStream = fs.createReadStream(downloadDest);
+    downloadedFileStream.on("error", (err) => {
+      downloadedFileStream.end();
+      console.error(`Error reading downloaded file (${downloadDest})`);
+      console.error(`${err}`);
+      throw `Error reading downloaded file (${downloadDest})`;
+    });
+    const untarred = require("tar-fs").extract(TESS_HOME);
+    untarred.on("finish", () => {
+      renameMongoInstall(downloadDest, postInit);
+    });
+    downloadedFileStream
+      .pipe(require("gunzip-maybe")())
+      .pipe(untarred);
+  }
+};
+
+const initializeUserSystem = (postInit) => {
+  console.log(`Ensure application directory exists (${TESS_HOME})`);
+  if (!fs.existsSync(TESS_HOME)) {
+    console.log(`\tApplication directory did not exist; creating ${TESS_HOME}`);
+    fs.mkdirSync(TESS_HOME);
+  }
+
+  // make sure that mongod is available in the application directory
+  console.log(`Ensure MongoDB is installed`);
+  if (!fs.existsSync(MONGOD_PATH)) {
+    console.log(`\tMongoDB not installed`);
+    const downloadUrl = getMongoDownloadUrl();
+    const downloadDest = path.join(TESS_HOME, path.basename(downloadUrl));
+    if (!fs.existsSync(downloadDest)) {
+      console.log(`\tDownloading ${downloadUrl}`);
+      var file = fs.createWriteStream(downloadDest);
+      require("https").get(downloadUrl, response => {
+        response.on("error", () => {
+          file.end();
+          console.error("Error during download");
+          throw "Error during download";
+        });
+        response.on("end", () => {
+          unpackMongoInstall(downloadDest, postInit)
+        });
+        response.pipe(file);
+      }).on("error", () => {
+        fs.unlinkSync(downloadDest);
+        console.error(`Could not use download URL (${downloadUrl})`);
+        throw `Could not use download URL (${downloadUrl})`;
+      });
+    } else {
+      unpackMongoInstall(downloadDest, postInit);
+    }
+  } else {
+    postInit();
+  }
+};
+
+const getMongoConfig = () => {
+  let mongoOptions = {
+    "port": "40404",
+  };
+  const configpath = path.join(require("os").homedir(), "tesserae.cfg");
+  if (fs.existsSync(configpath)) {
+    const ini = require("ini");
+    const config = ini.parse(fs.readFileSync(configpath, "utf-8"));
+    if ("MONGO" in config) {
+      const dbconfig = config["MONGO"];
+      for (const property in dbconfig) {
+        mongoOptions[property] = dbconfig[property];
+      }
+    }
+  }
+  return mongoOptions
+};
+
+const getMongoClient = config => {
+  const mongoUrl = `mongodb://localhost:${config["port"]}`;
+  const MongoClient = require('mongodb').MongoClient;
+  return new MongoClient(mongoUrl);
+};
+
+const launchMongod = (config, postLaunch) => {
+  const mongoPort = config["port"];
+  const mongodSpawn = child_process.spawn(
+    MONGOD_PATH,
+    [
+      '--port',
+      mongoPort,
+      '--dbpath',
+      MONGODB_DBPATH
+    ]
+  );
+  mongodSpawn.on("error", (err) => {
+    if (err !== null) {
+      throw `mongod refused to start (${MONGOD_PATH})`;
+    }
+  });
+  postLaunch();
+}
+
 const isRunningInBundle = () => {
-  return require("fs").existsSync(path.join(__dirname, PY_DIST_FOLDER));
+  return fs.existsSync(path.join(__dirname, PY_DIST_FOLDER));
 };
 
 const getPythonScriptPath = () => {
   if (!isRunningInBundle()) {
     return path.join(__dirname, PY_SRC_FOLDER, PY_MODULE + ".py");
   }
-  if (process.platform === "win32") {
+  if (os.platform === "win32") {
     return path.join(
       __dirname,
       PY_DIST_FOLDER,
@@ -35,22 +231,25 @@ const getPythonScriptPath = () => {
 const startPythonSubprocess = () => {
   let script = getPythonScriptPath();
   if (isRunningInBundle()) {
-    subpy = require("child_process").spawn(
+    subpy = child_process.spawn(
       script,
-      [],
+      []
     );
   } else {
-    subpy = require("child_process").spawn("python", [script]);
+    subpy = child_process.spawn("python", [script]);
   }
 };
 
-const killPythonSubprocess = main_pid => {
+const killSubprocesses = main_pid => {
   const python_script_name = path.basename(getPythonScriptPath());
   let cleanup_completed = false;
   const psTree = require("ps-tree");
   psTree(main_pid, function(err, children) {
-    let python_pids = children
+    let to_kill = children
       .filter(function(el) {
+        if (el.COMMAND.includes("mongod")) {
+          return true;
+        }
         if (isRunningInBundle()) {
           return el.COMMAND === python_script_name;
         }
@@ -59,8 +258,8 @@ const killPythonSubprocess = main_pid => {
       .map(function(p) {
         return p.PID;
       });
-    // kill all the spawned python processes
-    python_pids.forEach(function(pid) {
+    // kill all the spawned python and mongod processes
+    to_kill.forEach(function(pid) {
       process.kill(pid);
     });
     subpy = null;
@@ -92,7 +291,7 @@ const createMainWindow = () => {
 
   // Load the index page
   mainWindow.loadURL(
-    url.format({
+    require("url").format({
       pathname: path.join(__dirname, "frontend", "index.html"),
       protocol: 'file:',
       slashes: true
@@ -113,12 +312,25 @@ const createMainWindow = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on("ready", function() {
-  // start the backend server
-  startPythonSubprocess();
-  createMainWindow();
-
-  // TODO make sure that CLTK model files are available
-  // TODO make sure that mongodb is installed and running
+  initializeUserSystem(() => {
+    const config = getMongoConfig();
+    launchMongod(config, () => {
+      // Make sure that MongoDB is reachable
+      const client = getMongoClient(config);
+      client.connect(function(err) {
+        client.close();
+        if (err === null) {
+          // start the backend server only if we can connect to MongoDB
+          startPythonSubprocess();
+          createMainWindow();
+        } else {
+          // something went terribly wrong
+          throw "Could not connect to MongoDB";
+        }
+      });
+      // TODO make sure that CLTK model files are available
+    });
+  });
 });
 
 // disable menu
@@ -130,9 +342,9 @@ app.on("browser-window-created", function(e, window) {
 app.on("window-all-closed", () => {
   // On macOS it is common for applications and their menu bar
   // to stay active until the user quits explicitly with Cmd + Q
-  if (process.platform !== "darwin") {
+  if (os.platform !== "darwin") {
     let main_process_pid = process.pid;
-    killPythonSubprocess(main_process_pid).then(() => {
+    killSubprocesses(main_process_pid).then(() => {
       app.quit();
     });
   }
@@ -145,7 +357,7 @@ app.on("activate", () => {
     startPythonSubprocess();
   }
   if (mainWindow === null) {
-    createWindow();
+    createMainWindow();
   }
 });
 
