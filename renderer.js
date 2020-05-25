@@ -162,24 +162,22 @@ const getPromiseViaHttps = (downloadUrl, downloadDest) => {
 
 const installCltkData = () => {};
 
-const initializeUserSystem = async () => {
-  console.log(`Ensure application directory exists (${TESS_HOME})`);
-  if (!fs.existsSync(TESS_HOME)) {
-    console.log(`\tApplication directory did not exist; creating ${TESS_HOME}`);
-    fs.mkdirSync(TESS_HOME);
-  }
-
-  // make sure that mongod is available in the application directory
-  console.log(`Ensure MongoDB is installed`);
-  if (!fs.existsSync(MONGOD_PATH)) {
-    console.log(`\tMongoDB not installed`);
-    const downloadUrl = getMongoDownloadUrl();
-    const downloadDest = path.join(TESS_HOME, path.basename(downloadUrl));
-    if (!fs.existsSync(downloadDest)) {
-      await getPromiseViaHttps(downloadUrl, downloadDest);
+const launchMongod = async (config) => {
+  const mongoPort = config["port"];
+  const mongodSpawn = child_process.spawn(
+    MONGOD_PATH,
+    [
+      '--port',
+      mongoPort,
+      '--dbpath',
+      MONGODB_DBPATH
+    ]
+  );
+  mongodSpawn.on("error", (err) => {
+    if (err !== null) {
+      throw `mongod refused to start (${MONGOD_PATH})`;
     }
-    await unpackMongoInstall(downloadDest);
-  }
+  });
 };
 
 const getMongoConfig = () => {
@@ -206,24 +204,45 @@ const getMongoClient = config => {
   return new MongoClient(mongoUrl);
 };
 
-const launchMongod = (config, postLaunch) => {
-  const mongoPort = config["port"];
-  const mongodSpawn = child_process.spawn(
-    MONGOD_PATH,
-    [
-      '--port',
-      mongoPort,
-      '--dbpath',
-      MONGODB_DBPATH
-    ]
-  );
-  mongodSpawn.on("error", (err) => {
-    if (err !== null) {
-      throw `mongod refused to start (${MONGOD_PATH})`;
-    }
+const checkMongoConnection = (config) => {
+  return new Promise((resolve) => {
+    // Make sure that MongoDB server is reachable
+    const client = getMongoClient(config);
+    client.connect(function(err) {
+      if (err === null) {
+        resolve();
+      } else {
+        throw "Could not connect to MongoDB";
+      }
+    });
   });
-  postLaunch();
-}
+};
+
+const initializeUserSystem = async () => {
+  console.log(`Ensure application directory exists (${TESS_HOME})`);
+  if (!fs.existsSync(TESS_HOME)) {
+    console.log(`\tApplication directory did not exist; creating ${TESS_HOME}`);
+    fs.mkdirSync(TESS_HOME);
+  }
+
+  console.log(`Ensure MongoDB is installed`);
+  if (!fs.existsSync(MONGOD_PATH)) {
+    console.log(`\tMongoDB not installed`);
+    const downloadUrl = getMongoDownloadUrl();
+    const downloadDest = path.join(TESS_HOME, path.basename(downloadUrl));
+    if (!fs.existsSync(downloadDest)) {
+      await getPromiseViaHttps(downloadUrl, downloadDest);
+    }
+    await unpackMongoInstall(downloadDest);
+  }
+
+  const config = getMongoConfig();
+  console.log(`Launch MongoDB in the background`);
+  await launchMongod(config);
+
+  console.log(`Check MongoDB connection`);
+  await checkMongoConnection(config);
+};
 
 const isRunningInBundle = () => {
   return fs.existsSync(path.join(__dirname, PY_DIST_FOLDER));
@@ -328,22 +347,8 @@ const createMainWindow = () => {
 // Some APIs can only be used after this event occurs.
 app.on("ready", function() {
   initializeUserSystem().then(() => {
-    const config = getMongoConfig();
-    launchMongod(config, () => {
-      // Make sure that MongoDB is reachable
-      const client = getMongoClient(config);
-      client.connect(function(err) {
-        client.close();
-        if (err === null) {
-          // start the backend server only if we can connect to MongoDB
-          startPythonSubprocess();
-          createMainWindow();
-        } else {
-          // something went terribly wrong
-          throw "Could not connect to MongoDB";
-        }
-      });
-    });
+    startPythonSubprocess();
+    createMainWindow();
   });
 });
 
