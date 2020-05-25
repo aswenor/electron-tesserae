@@ -211,7 +211,7 @@ const getMongoConfig = () => {
 const getMongoClient = config => {
   const mongoUrl = `mongodb://localhost:${config["port"]}`;
   const MongoClient = require('mongodb').MongoClient;
-  return new MongoClient(mongoUrl);
+  return new MongoClient(mongoUrl, {"useUnifiedTopology": true});
 };
 
 const checkMongoConnection = (config) => {
