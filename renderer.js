@@ -6,6 +6,7 @@ const fs = require("fs");
 const mkdirp = require("mkdirp");
 const os = require("os");
 const path = require("path");
+const yauzl = require("yauzl");
 
 // Keep a global reference of the mainWindow object, if you don't, the
 // mainWindow will
@@ -51,60 +52,64 @@ const renameMongoInstall = (downloadDest) => {
   console.log(`\tMongoDB installed (${MONGOD_PATH})`);
 };
 
-const getPromiseUnzip = (downloadDest) => {
-  const downloadedZipFile = require("yauzl").open(
-    downloadDest,
-    {"lazyEntries": true},
-    (err, zipfile) => {
-      if (err) {
-        console.error(`Error occurred while opening ${downloadDest}`);
-        throw err;
-      }
-      zipfile.readEntry();
-      zipfile.on("entry", (entry) => {
-        if (/\/$/.test(entry.fileName)) {
-          // ignore directory entries, since they may or may not be there
-          zipfile.readEntry();
-        } else {
-          // make sure that output directory exists
-          const neededDir = path.join(
-            TESS_HOME,
-            path.dirname(entry.fileName)
-          );
-          if (!fs.existsSync(neededDir)) {
-            mkdirp.sync(neededDir);
-          }
-          zipfile.openReadStream(entry, (err, readStream) => {
-            if (err) {
-              console.error(`Error occurred while reading ${entry.fileName}`);
-              throw err;
-            }
-            readStream.on("end", () => {
-              zipfile.readEntry();
-            });
-            readStream.on("error", (err) => {
-              console.error(
-                `Error occurred while decompressing ${entry.fileName}`
-              );
-              throw err;
-            });
-            const outpath = path.join(
-              TESS_HOME,
-              entry.fileName
-            );
-            const outfile = fs.createWriteStream(outpath);
-            readStream.pipe(outfile);
-          });
+const getPromiseUnzip = (zipPath, unzipPath) => {
+  return new Promise((resolve) => {
+    yauzl.open(
+      zipPath,
+      {"lazyEntries": true},
+      (err, zipfile) => {
+        if (err) {
+          console.error(`Error occurred while opening ${zipPath}`);
+          throw err;
         }
-      });
-    }
-  );
-  downloadedZipFile.on("close", () => {
-    resolve();
-  });
-  downloadedZipFile.on("error", (err) => {
-    console.error(`Error occurred in unzipping ${downloadDest}`);
-    throw err;
+        zipfile.on("close", () => {
+          resolve();
+        });
+        zipfile.on("error", (inner_err) => {
+          console.error(`Error occurred in unzipping ${zipPath}`);
+          throw inner_err;
+        });
+        zipfile.readEntry();
+        zipfile.on("entry", (entry) => {
+          if (/\/$/.test(entry.fileName)) {
+            // ignore directory entries, since they may or may not be there
+            zipfile.readEntry();
+          } else {
+            // make sure that output directory exists
+            const neededDir = path.join(
+              unzipPath,
+              path.dirname(entry.fileName)
+            );
+            if (!fs.existsSync(neededDir)) {
+              mkdirp.sync(neededDir);
+            }
+            zipfile.openReadStream(entry, (err, readStream) => {
+              if (err) {
+                console.error(
+                  `Error occurred while reading ${entry.fileName}`
+                );
+                throw err;
+              }
+              readStream.on("end", () => {
+                zipfile.readEntry();
+              });
+              readStream.on("error", (err) => {
+                console.error(
+                  `Error occurred while decompressing ${entry.fileName}`
+                );
+                throw err;
+              });
+              const outpath = path.join(
+                unzipPath,
+                entry.fileName
+              );
+              const outfile = fs.createWriteStream(outpath);
+              readStream.pipe(outfile);
+            });
+          }
+        });
+      }
+    );
   });
 };
 
@@ -130,7 +135,7 @@ const getPromiseUntgz = (downloadDest) => {
 const unpackMongoInstall = async (downloadDest) => {
   console.log(`\tMongoDB downloaded; now installing`);
   if (path.extname(downloadDest) === ".zip") {
-    await getPromiseUnzip(downloadDest);
+    await getPromiseUnzip(downloadDest, TESS_HOME);
   } else {
     // assume .tgz
     await getPromiseUntgz(downloadDest);
@@ -140,18 +145,24 @@ const unpackMongoInstall = async (downloadDest) => {
 
 const getPromiseViaHttps = (downloadUrl, downloadDest) => {
   console.log(`\tDownloading ${downloadUrl}`);
+  var file = fs.createWriteStream(downloadDest);
   return new Promise((resolve) => {
-    var file = fs.createWriteStream(downloadDest);
     require("https").get(downloadUrl, response => {
-      response.on("error", (err) => {
-        file.end();
-        console.error(`Error during download (${downloadUrl})`);
-        throw err;
-      });
-      response.on("end", () => {
-        resolve();
-      });
-      response.pipe(file);
+      if (response.statusCode >= 300 && response.statusCode < 400) {
+        const newUrl = response.headers.location;
+        console.log(`\tRedirected: ${downloadUrl} => ${newUrl}`);
+        return getPromiseViaHttps(newUrl, downloadDest).then(resolve);
+      } else {
+        response.on("error", (err) => {
+          file.end();
+          console.error(`Error during download (${downloadUrl})`);
+          throw err;
+        });
+        response.on("end", () => {
+          resolve();
+        });
+        response.pipe(file);
+      }
     }).on("error", (err) => {
       fs.unlinkSync(downloadDest);
       console.error(`Could not use download URL (${downloadUrl})`);
@@ -159,8 +170,6 @@ const getPromiseViaHttps = (downloadUrl, downloadDest) => {
     });
   });
 };
-
-const installCltkData = () => {};
 
 const launchMongod = async (config) => {
   const mongoPort = config["port"];
@@ -175,7 +184,8 @@ const launchMongod = async (config) => {
   );
   mongodSpawn.on("error", (err) => {
     if (err !== null) {
-      throw `mongod refused to start (${MONGOD_PATH})`;
+      console.error(`mongod refused to start (${MONGOD_PATH})`);
+      throw err;
     }
   });
 };
@@ -212,10 +222,34 @@ const checkMongoConnection = (config) => {
       if (err === null) {
         resolve();
       } else {
-        throw "Could not connect to MongoDB";
+        console.error("Could not connect to MongoDB");
+        throw err;
       }
     });
   });
+};
+
+const installCltkData = async (lang) => {
+  console.log(`\tEnsure data files for "${lang}" are installed`);
+  const dataInstallPath = path.join(
+    os.homedir(), "cltk_data", lang, "model"
+  );
+  const finalName = path.join(dataInstallPath, `${lang}_models_cltk`);
+  if (!fs.existsSync(finalName)) {
+    console.log(`\t\tData files for "${lang}" not installed`);
+    const downloadDest = path.join(TESS_HOME, `${lang}_models_cltk-master.zip`);
+    if (!fs.existsSync(downloadDest)) {
+      console.log(`\t\tData files for "${lang}" not downloaded`);
+      await getPromiseViaHttps(
+        `https://github.com/cltk/${lang}_models_cltk/archive/master.zip`,
+        downloadDest
+      );
+    }
+    console.log(`\t\tData files for "${lang}" downloaded; now installing`);
+    mkdirp.sync(dataInstallPath);
+    await getPromiseUnzip(downloadDest, dataInstallPath);
+    fs.renameSync(finalName + "-master", finalName);
+  }
 };
 
 const initializeUserSystem = async () => {
@@ -242,6 +276,10 @@ const initializeUserSystem = async () => {
 
   console.log(`Check MongoDB connection`);
   await checkMongoConnection(config);
+
+  console.log(`Ensure that relevant CLTK data files are installed`);
+  await installCltkData("lat");
+  await installCltkData("grc");
 };
 
 const isRunningInBundle = () => {
