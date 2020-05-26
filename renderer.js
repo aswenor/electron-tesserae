@@ -283,21 +283,28 @@ const initializeUserSystem = async () => {
 };
 
 const isRunningInBundle = () => {
-  return fs.existsSync(path.join(__dirname, PY_DIST_FOLDER));
+  return path.basename(__dirname) === "app.asar";
 };
+
+const getResourcesPath = () => {
+  if (isRunningInBundle()) {
+    return path.join(path.dirname(__dirname), "app");
+  }
+  return __dirname;
+}
 
 const getPythonScriptPath = () => {
   if (!isRunningInBundle()) {
-    return path.join(__dirname, PY_SRC_FOLDER, PY_MODULE + ".py");
+    return path.join(getResourcesPath(), PY_SRC_FOLDER, PY_MODULE + ".py");
   }
   if (os.platform === "win32") {
     return path.join(
-      __dirname,
+      getResourcesPath(),
       PY_DIST_FOLDER,
       PY_MODULE.slice(0, -3) + ".exe"
     );
   }
-  return path.join(__dirname, PY_DIST_FOLDER, PY_MODULE);
+  return path.join(getResourcesPath(), PY_DIST_FOLDER, PY_MODULE);
 };
 
 const startPythonSubprocess = () => {
@@ -359,16 +366,14 @@ const createMainWindow = () => {
     resizeable: true
   });
 
-  // Make sure that API server is running
-
   // Load the index page
   mainWindow.loadURL(
     require("url").format({
-      pathname: path.join(__dirname, "frontend", "index.html"),
+      pathname: path.join(getResourcesPath(), "frontend", "index.html"),
       protocol: 'file:',
       slashes: true
     })
-  )
+  );
 
   // Open the DevTools.
   //mainWindow.webContents.openDevTools();

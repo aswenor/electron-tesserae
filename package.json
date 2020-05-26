@@ -6,7 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "electron .",
-    "package": "npm run -s package-python && npm run -s package-electron && npm run -s package-cleanup",
+    "package": "rm -rf dist && npm run -s package-python && npm run -s package-electron && npm run -s package-cleanup",
     "package-python": "pyinstaller --clean --windowed --onefile --distpath dist-python --additional-hooks-dir pyinstaller-hooks tisapi/run_app.py",
     "package-electron": "electron-builder",
     "package-cleanup": "rm -rf build && rm -rf run_app.spec && rm -rf dist-python"
@@ -14,7 +14,7 @@
   "build": {
     "appId": "edu.buffalo.tesserae",
     "productName": "Tesserae",
-    "asar": false,
+    "asar": true,
     "asarUnpack": [
       "**/*.node"
     ],
@@ -44,8 +44,11 @@
   },
   "eslintConfig": {
     "env": {
-      "es8": true,
+      "es6": true,
       "node": true
+    },
+    "parserOptions": {
+      "ecmaVersion": 8
     }
   },
   "author": "",
