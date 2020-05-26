@@ -8,6 +8,10 @@ import apitess
 from tesserae.utils.coordinate import JobQueue
 
 
+os.environ['HOME'] = os.path.expanduser('~/tesserae')
+os.environ['ADMIN_INSTANCE'] = 'true'
+
+
 # Give app chance to clean up when signal is sent
 def raise_exit(*args):
     raise SystemExit()

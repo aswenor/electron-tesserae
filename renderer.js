@@ -194,7 +194,7 @@ const getMongoConfig = () => {
   let mongoOptions = {
     "port": "40404",
   };
-  const configpath = path.join(require("os").homedir(), "tesserae.cfg");
+  const configpath = path.join(TESS_HOME, "tesserae.cfg");
   if (fs.existsSync(configpath)) {
     const ini = require("ini");
     const config = ini.parse(fs.readFileSync(configpath, "utf-8"));
@@ -230,22 +230,22 @@ const checkMongoConnection = (config) => {
 };
 
 const installCltkData = async (lang) => {
-  console.log(`\tEnsure data files for "${lang}" are installed`);
+  console.log(`(Ensuring data files for "${lang}" are installed)`);
   const dataInstallPath = path.join(
-    os.homedir(), "cltk_data", lang, "model"
+    TESS_HOME, "cltk_data", lang, "model"
   );
   const finalName = path.join(dataInstallPath, `${lang}_models_cltk`);
   if (!fs.existsSync(finalName)) {
-    console.log(`\t\tData files for "${lang}" not installed`);
+    console.log(`\tData files for "${lang}" not installed`);
     const downloadDest = path.join(TESS_HOME, `${lang}_models_cltk-master.zip`);
     if (!fs.existsSync(downloadDest)) {
-      console.log(`\t\tData files for "${lang}" not downloaded`);
+      console.log(`\tData files for "${lang}" not downloaded`);
       await getPromiseViaHttps(
         `https://github.com/cltk/${lang}_models_cltk/archive/master.zip`,
         downloadDest
       );
     }
-    console.log(`\t\tData files for "${lang}" downloaded; now installing`);
+    console.log(`\tData files for "${lang}" downloaded; now installing`);
     mkdirp.sync(dataInstallPath);
     await getPromiseUnzip(downloadDest, dataInstallPath);
     fs.renameSync(finalName + "-master", finalName);
@@ -253,13 +253,13 @@ const installCltkData = async (lang) => {
 };
 
 const initializeUserSystem = async () => {
-  console.log(`Ensure application directory exists (${TESS_HOME})`);
+  console.log(`Ensuring application directory exists (${TESS_HOME})`);
   if (!fs.existsSync(TESS_HOME)) {
     console.log(`\tApplication directory did not exist; creating ${TESS_HOME}`);
     fs.mkdirSync(TESS_HOME);
   }
 
-  console.log(`Ensure MongoDB is installed`);
+  console.log(`Ensuring MongoDB is installed`);
   if (!fs.existsSync(MONGOD_PATH)) {
     console.log(`\tMongoDB not installed`);
     const downloadUrl = getMongoDownloadUrl();
@@ -271,13 +271,13 @@ const initializeUserSystem = async () => {
   }
 
   const config = getMongoConfig();
-  console.log(`Launch MongoDB in the background`);
+  console.log(`Launching MongoDB in the background`);
   await launchMongod(config);
 
-  console.log(`Check MongoDB connection`);
+  console.log(`Checking MongoDB connection`);
   await checkMongoConnection(config);
 
-  console.log(`Ensure that relevant CLTK data files are installed`);
+  console.log(`Ensuring that relevant CLTK data files are installed`);
   await installCltkData("lat");
   await installCltkData("grc");
 };
