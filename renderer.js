@@ -226,6 +226,7 @@ const getPromiseViaHttps = (downloadUrl, downloadDest) => {
 };
 
 const launchMongod = async (config) => {
+  mkdirp.sync(MONGODB_DBPATH);
   const mongoPort = config["port"];
   const mongodSpawn = child_process.spawn(
     MONGOD_PATH,
@@ -236,6 +237,14 @@ const launchMongod = async (config) => {
       MONGODB_DBPATH
     ]
   );
+  mongodSpawn.on("close", (code) => {
+    if (code != 0) {
+      writeStartupError(
+        `mongod (${MONGOD_PATH}) failed with non-zero error code`,
+        code
+      );
+    }
+  });
   mongodSpawn.on("error", (err) => {
     if (err !== null) {
       writeStartupError(`mongod refused to start (${MONGOD_PATH})`, err);
