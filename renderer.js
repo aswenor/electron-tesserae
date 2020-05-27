@@ -6,11 +6,13 @@ const fs = require("fs");
 const mkdirp = require("mkdirp");
 const os = require("os");
 const path = require("path");
+const url = require("url");
 const yauzl = require("yauzl");
 
 // Keep a global reference of the mainWindow object, if you don't, the
 // mainWindow will
 // be closed automatically when the JavaScript object is garbage collected.
+let startupWindow = null;
 let mainWindow = null;
 let subpy = null;
 
@@ -26,10 +28,60 @@ const getMongodPath = () => {
   return mongodPath;
 };
 
+const isRunningInBundle = () => {
+  return path.basename(__dirname) === "app.asar";
+};
+
+const getResourcesPath = () => {
+  if (isRunningInBundle()) {
+    return path.join(path.dirname(__dirname), "app");
+  }
+  return __dirname;
+}
+
 const TESS_HOME = path.join(os.homedir(), "tesserae"); // application home
 const MONGO_INSTALL_PATH = path.join(TESS_HOME, "mongodb");
 const MONGOD_PATH = getMongodPath();
 const MONGODB_DBPATH = path.join(TESS_HOME, "tessdb");
+
+const loadStartupWindow = () => {
+  return new Promise((resolve) => {
+    startupWindow = new BrowserWindow({
+      width: 800,
+      height: 600,
+      resizable: true,
+      webPreferences: {
+        preload: path.join(__dirname, "preloadStartup.js")
+      }
+    });
+    startupWindow.loadFile(path.join(__dirname, "startup.html"));
+    // startupWindow.webContents.openDevTools();
+    startupWindow.on("closed", () => {
+      startupWindow = null
+    });
+    startupWindow.webContents.once("dom-ready", (event, msg) => {
+      resolve();
+    });
+  });
+};
+
+const writeStartupMessage = (msg) => {
+  console.log(msg);
+  if (startupWindow !== null) {
+    startupWindow.webContents.send('update', msg);
+  }
+};
+
+const writeStartupError = (msg, err) => {
+  console.error(msg);
+  console.error(err);
+  if (startupWindow !== null) {
+    startupWindow.webContents.send('error', msg, err.toString());
+  }
+  if (mainWindow !== null) {
+    mainWindow.close();
+  }
+};
 
 const getMongoDownloadUrl = () => {
   const osname = os.platform();
@@ -43,13 +95,16 @@ const getMongoDownloadUrl = () => {
     // assume Ubuntu 18.04 LTS
     return "https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu1804-4.2.6.tgz";
   }
-  throw "Unsupported operating system";
+  writeStartupError(
+    "Could not get download URL",
+    "Unsupported operating system"
+  );
 };
 
 const renameMongoInstall = (downloadDest) => {
   const untarredPath = downloadDest.slice(0, -4);
   fs.renameSync(untarredPath, MONGO_INSTALL_PATH);
-  console.log(`\tMongoDB installed (${MONGOD_PATH})`);
+  writeStartupMessage(`\tMongoDB installed (${MONGOD_PATH})`);
 };
 
 const getPromiseUnzip = (zipPath, unzipPath) => {
@@ -59,15 +114,15 @@ const getPromiseUnzip = (zipPath, unzipPath) => {
       {"lazyEntries": true},
       (err, zipfile) => {
         if (err) {
-          console.error(`Error occurred while opening ${zipPath}`);
-          throw err;
+          writeStartupError(`Error occurred while opening ${zipPath}`, err);
         }
         zipfile.on("close", () => {
           resolve();
         });
         zipfile.on("error", (inner_err) => {
-          console.error(`Error occurred in unzipping ${zipPath}`);
-          throw inner_err;
+          writeStartupError(
+            `Error occurred in unzipping ${zipPath}`, inner_err
+          );
         });
         zipfile.readEntry();
         zipfile.on("entry", (entry) => {
@@ -85,19 +140,19 @@ const getPromiseUnzip = (zipPath, unzipPath) => {
             }
             zipfile.openReadStream(entry, (err, readStream) => {
               if (err) {
-                console.error(
-                  `Error occurred while reading ${entry.fileName}`
+                writeStartupError(
+                  `Error occurred while reading ${entry.fileName}`,
+                  err
                 );
-                throw err;
               }
               readStream.on("end", () => {
                 zipfile.readEntry();
               });
               readStream.on("error", (err) => {
-                console.error(
-                  `Error occurred while decompressing ${entry.fileName}`
+                writeStartupError(
+                  `Error occurred while decompressing ${entry.fileName}`,
+                  err
                 );
-                throw err;
               });
               const outpath = path.join(
                 unzipPath,
@@ -118,9 +173,10 @@ const getPromiseUntgz = (downloadDest) => {
     const downloadedFileStream = fs.createReadStream(downloadDest);
     downloadedFileStream.on("error", (err) => {
       downloadedFileStream.end();
-      console.error(`Error reading downloaded file (${downloadDest})`);
-      console.error(`${err}`);
-      throw `Error reading downloaded file (${downloadDest})`;
+      writeStartupError(
+        `Error reading downloaded file (${downloadDest})`,
+        err
+      );
     });
     const untarred = require("tar-fs").extract(TESS_HOME);
     untarred.on("finish", () => {
@@ -133,7 +189,7 @@ const getPromiseUntgz = (downloadDest) => {
 };
 
 const unpackMongoInstall = async (downloadDest) => {
-  console.log(`\tMongoDB downloaded; now installing`);
+  writeStartupMessage(`\tMongoDB downloaded; now installing`);
   if (path.extname(downloadDest) === ".zip") {
     await getPromiseUnzip(downloadDest, TESS_HOME);
   } else {
@@ -144,19 +200,18 @@ const unpackMongoInstall = async (downloadDest) => {
 };
 
 const getPromiseViaHttps = (downloadUrl, downloadDest) => {
-  console.log(`\tDownloading ${downloadUrl}`);
+  writeStartupMessage(`\tDownloading ${downloadUrl}`);
   var file = fs.createWriteStream(downloadDest);
   return new Promise((resolve) => {
     require("https").get(downloadUrl, response => {
       if (response.statusCode >= 300 && response.statusCode < 400) {
         const newUrl = response.headers.location;
-        console.log(`\tRedirected: ${downloadUrl} => ${newUrl}`);
+        writeStartupMessage(`\tRedirected: ${downloadUrl} => ${newUrl}`);
         return getPromiseViaHttps(newUrl, downloadDest).then(resolve);
       } else {
         response.on("error", (err) => {
           file.end();
-          console.error(`Error during download (${downloadUrl})`);
-          throw err;
+          writeStartupError(`Error during download (${downloadUrl})`, err);
         });
         response.on("end", () => {
           resolve();
@@ -165,8 +220,7 @@ const getPromiseViaHttps = (downloadUrl, downloadDest) => {
       }
     }).on("error", (err) => {
       fs.unlinkSync(downloadDest);
-      console.error(`Could not use download URL (${downloadUrl})`);
-      throw err;
+      writeStartupError(`Could not use download URL (${downloadUrl})`, err);
     });
   });
 };
@@ -184,8 +238,7 @@ const launchMongod = async (config) => {
   );
   mongodSpawn.on("error", (err) => {
     if (err !== null) {
-      console.error(`mongod refused to start (${MONGOD_PATH})`);
-      throw err;
+      writeStartupError(`mongod refused to start (${MONGOD_PATH})`, err);
     }
   });
 };
@@ -222,30 +275,29 @@ const checkMongoConnection = (config) => {
       if (err === null) {
         resolve();
       } else {
-        console.error("Could not connect to MongoDB");
-        throw err;
+        writeStartupError("Could not connect to MongoDB", err);
       }
     });
   });
 };
 
 const installCltkData = async (lang) => {
-  console.log(`(Ensuring data files for "${lang}" are installed)`);
+  writeStartupMessage(`Ensuring data files for "${lang}" are installed`);
   const dataInstallPath = path.join(
     TESS_HOME, "cltk_data", lang, "model"
   );
   const finalName = path.join(dataInstallPath, `${lang}_models_cltk`);
   if (!fs.existsSync(finalName)) {
-    console.log(`\tData files for "${lang}" not installed`);
+    writeStartupMessage(`\tData files for "${lang}" not installed`);
     const downloadDest = path.join(TESS_HOME, `${lang}_models_cltk-master.zip`);
     if (!fs.existsSync(downloadDest)) {
-      console.log(`\tData files for "${lang}" not downloaded`);
+      writeStartupMessage(`\tData files for "${lang}" not downloaded`);
       await getPromiseViaHttps(
         `https://github.com/cltk/${lang}_models_cltk/archive/master.zip`,
         downloadDest
       );
     }
-    console.log(`\tData files for "${lang}" downloaded; now installing`);
+    writeStartupMessage(`\tData files for "${lang}" downloaded; now installing`);
     mkdirp.sync(dataInstallPath);
     await getPromiseUnzip(downloadDest, dataInstallPath);
     fs.renameSync(finalName + "-master", finalName);
@@ -253,15 +305,20 @@ const installCltkData = async (lang) => {
 };
 
 const initializeUserSystem = async () => {
-  console.log(`Ensuring application directory exists (${TESS_HOME})`);
+  await loadStartupWindow();
+  writeStartupMessage(`Ensuring application directory exists (${TESS_HOME})`);
   if (!fs.existsSync(TESS_HOME)) {
-    console.log(`\tApplication directory did not exist; creating ${TESS_HOME}`);
+    writeStartupMessage(
+      `\tApplication directory did not exist; creating ${TESS_HOME}`
+    );
     fs.mkdirSync(TESS_HOME);
   }
 
-  console.log(`Ensuring MongoDB is installed`);
+  writeStartupMessage(`Ensuring MongoDB is installed`);
   if (!fs.existsSync(MONGOD_PATH)) {
-    console.log(`\tMongoDB not installed`);
+    writeStartupMessage(
+      `\tMongoDB not installed; now downloading (this could take a while)`
+    );
     const downloadUrl = getMongoDownloadUrl();
     const downloadDest = path.join(TESS_HOME, path.basename(downloadUrl));
     if (!fs.existsSync(downloadDest)) {
@@ -271,27 +328,18 @@ const initializeUserSystem = async () => {
   }
 
   const config = getMongoConfig();
-  console.log(`Launching MongoDB in the background`);
+  writeStartupMessage(`Launching MongoDB in the background`);
   await launchMongod(config);
 
-  console.log(`Checking MongoDB connection`);
+  writeStartupMessage(`Checking MongoDB connection`);
   await checkMongoConnection(config);
 
-  console.log(`Ensuring that relevant CLTK data files are installed`);
   await installCltkData("lat");
   await installCltkData("grc");
+  writeStartupMessage(
+    `Initialization complete; Tesserae will start momentarily`
+  );
 };
-
-const isRunningInBundle = () => {
-  return path.basename(__dirname) === "app.asar";
-};
-
-const getResourcesPath = () => {
-  if (isRunningInBundle()) {
-    return path.join(path.dirname(__dirname), "app");
-  }
-  return __dirname;
-}
 
 const getPythonScriptPath = () => {
   if (!isRunningInBundle()) {
@@ -363,17 +411,9 @@ const createMainWindow = () => {
     // opacity:0.8,
     // darkTheme: true,
     // frame: true,
+    show: false,
     resizeable: true
   });
-
-  // Load the index page
-  mainWindow.loadURL(
-    require("url").format({
-      pathname: path.join(getResourcesPath(), "frontend", "index.html"),
-      protocol: 'file:',
-      slashes: true
-    })
-  );
 
   // Open the DevTools.
   //mainWindow.webContents.openDevTools();
@@ -385,13 +425,33 @@ const createMainWindow = () => {
   });
 };
 
+const revealMainWindow = () => {
+  if (mainWindow !== null) {
+    // Load the index page
+    mainWindow.loadURL(
+      url.format({
+        pathname: path.join(getResourcesPath(), "frontend", "index.html"),
+        protocol: 'file:',
+        slashes: true
+      })
+    );
+    setTimeout(() => {
+      mainWindow.show();
+      if (startupWindow !== null) {
+        startupWindow.close();
+      }
+    }, 2000);
+  }
+};
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on("ready", function() {
+  createMainWindow();
   initializeUserSystem().then(() => {
     startPythonSubprocess();
-    createMainWindow();
+    revealMainWindow();
   });
 });
 
@@ -420,6 +480,7 @@ app.on("activate", () => {
   }
   if (mainWindow === null) {
     createMainWindow();
+    revealMainWindow();
   }
 });
 
