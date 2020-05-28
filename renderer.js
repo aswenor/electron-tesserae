@@ -20,14 +20,6 @@ const PY_DIST_FOLDER = "dist-python"; // python distributable folder
 const PY_SRC_FOLDER = "tisapi"; // path to the python source
 const PY_MODULE = "run_app"; // the name of the main module
 
-const getMongodPath = () => {
-  const mongodPath = path.join(MONGO_INSTALL_PATH, "bin", "mongod");
-  if (os.platform() === "win32") {
-    return mongodPath + ".exe";
-  }
-  return mongodPath;
-};
-
 const isRunningInBundle = () => {
   return path.basename(__dirname) === "app.asar";
 };
@@ -39,8 +31,38 @@ const getResourcesPath = () => {
   return __dirname;
 }
 
+const getMongoDownloadUrl = () => {
+  const osname = os.platform();
+  if (osname === "win32") {
+    return "https://fastdl.mongodb.org/win32/mongodb-win32-x86_64-2012plus-4.2.6.zip";
+  }
+  if (osname === "darwin") {
+    return "https://fastdl.mongodb.org/osx/mongodb-macos-x86_64-4.2.6.tgz";
+  }
+  if (osname === "linux") {
+    // assume Ubuntu 18.04 LTS
+    return "https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu1804-4.2.6.tgz";
+  }
+  writeStartupError(
+    "Could not get download URL",
+    "Unsupported operating system"
+  );
+};
+
+const getMongodUnpackedPath = () => {
+  return path.join(TESS_HOME, path.basename(getMongoDownloadUrl()).slice(0, -4));
+};
+
+const getMongodPath = () => {
+  const mongodPath = path.join(getMongodUnpackedPath(), "bin", "mongod");
+  if (os.platform() === "win32") {
+    return mongodPath + ".exe";
+  }
+  return mongodPath;
+};
+
 const TESS_HOME = path.join(os.homedir(), "tesserae"); // application home
-const MONGO_INSTALL_PATH = path.join(TESS_HOME, "mongodb");
+const MONGO_INSTALL_PATH = getMongodUnpackedPath();
 const MONGOD_PATH = getMongodPath();
 const MONGODB_DBPATH = path.join(TESS_HOME, "tessdb");
 
@@ -83,35 +105,11 @@ const writeStartupError = (msg, err) => {
   }
 };
 
-const getMongoDownloadUrl = () => {
-  const osname = os.platform();
-  if (osname === "win32") {
-    return "https://fastdl.mongodb.org/win32/mongodb-win32-x86_64-2012plus-4.2.6.zip";
-  }
-  if (osname === "darwin") {
-    return "https://fastdl.mongodb.org/osx/mongodb-macos-x86_64-4.2.6.tgz";
-  }
-  if (osname === "linux") {
-    // assume Ubuntu 18.04 LTS
-    return "https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu1804-4.2.6.tgz";
-  }
-  writeStartupError(
-    "Could not get download URL",
-    "Unsupported operating system"
-  );
-};
-
-const renameMongoInstall = (downloadDest) => {
-  const untarredPath = downloadDest.slice(0, -4);
-  fs.renameSync(untarredPath, MONGO_INSTALL_PATH);
-  writeStartupMessage(`\tMongoDB installed (${MONGOD_PATH})`);
-};
-
 const getPromiseUnzip = (zipPath, unzipPath) => {
   return new Promise((resolve) => {
     yauzl.open(
       zipPath,
-      {"lazyEntries": true},
+      {"lazyEntries": true, "autoclose": true},
       (err, zipfile) => {
         if (err) {
           writeStartupError(`Error occurred while opening ${zipPath}`, err);
@@ -196,7 +194,6 @@ const unpackMongoInstall = async (downloadDest) => {
     // assume .tgz
     await getPromiseUntgz(downloadDest);
   }
-  renameMongoInstall(downloadDest);
 };
 
 const getPromiseViaHttps = (downloadUrl, downloadDest) => {

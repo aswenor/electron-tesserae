@@ -6,10 +6,10 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "electron .",
-    "package": "rm -rf dist && npm run -s package-python && npm run -s package-electron && npm run -s package-cleanup",
+    "package": "shx rm -rf dist && npm run -s package-python && npm run -s package-electron && npm run -s package-cleanup",
     "package-python": "pyinstaller --clean --windowed --onefile --distpath dist-python --additional-hooks-dir pyinstaller-hooks tisapi/run_app.py",
     "package-electron": "electron-builder",
-    "package-cleanup": "rm -rf build && rm -rf run_app.spec && rm -rf dist-python"
+    "package-cleanup": "shx rm -rf build && shx rm -rf run_app.spec && shx rm -rf dist-python"
   },
   "build": {
     "appId": "edu.buffalo.tesserae",
@@ -18,8 +18,12 @@
     "asarUnpack": [
       "**/*.node"
     ],
+    "win": {
+      "target": "portable"
+    },
     "mac": {
-      "category": "public.app-category.utilities"
+      "category": "public.app-category.utilities",
+      "target": "zip"
     },
     "files": [
       "renderer.js",
@@ -64,6 +68,7 @@
   "devDependencies": {
     "electron": "^6.0.10",
     "electron-builder": "^21.2.0",
-    "eslint": "^7.0.0"
+    "eslint": "^7.0.0",
+    "shx": "^0.3.2"
   }
 }
