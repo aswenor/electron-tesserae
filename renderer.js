@@ -9,21 +9,32 @@ const path = require("path");
 const url = require("url");
 const yauzl = require("yauzl");
 
-// Keep a global reference of the mainWindow object, if you don't, the
-// mainWindow will
+// Keep a global reference of the window objects. If you don't, the windows will
 // be closed automatically when the JavaScript object is garbage collected.
+// startupWindow refers to an initial loading screen
 let startupWindow = null;
+// mainWindow refers to the main interface of the application
 let mainWindow = null;
+
+// subpy refers to the backend server that needs to be running for the
+// application to work. Under normal conditions, the application will start the
+// server as a subprocess.
 let subpy = null;
 
 const PY_DIST_FOLDER = "dist-python"; // python distributable folder
 const PY_SRC_FOLDER = "tisapi"; // path to the python source
 const PY_MODULE = "run_app"; // the name of the main module
 
+/**
+ * @returns {boolean} is this instance running in a pre-built executable?
+ */
 const isRunningInBundle = () => {
   return path.basename(__dirname) === "app.asar";
 };
 
+/**
+ * @returns {string} path of the directory where the instance should look for files
+ */
 const getResourcesPath = () => {
   if (isRunningInBundle()) {
     return path.join(path.dirname(__dirname), "app");
@@ -31,6 +42,9 @@ const getResourcesPath = () => {
   return __dirname;
 }
 
+/**
+ * @returns {string} URL for system-specific MongoDB download
+ */
 const getMongoDownloadUrl = () => {
   const osname = os.platform();
   if (osname === "win32") {
@@ -49,10 +63,16 @@ const getMongoDownloadUrl = () => {
   );
 };
 
+/**
+ * @returns {string} path to directory where MongoDB application resides
+ */
 const getMongodUnpackedPath = () => {
   return path.join(TESS_HOME, path.basename(getMongoDownloadUrl()).slice(0, -4));
 };
 
+/**
+ * @returns {string} path to mongod exectuable
+ */
 const getMongodPath = () => {
   const mongodPath = path.join(getMongodUnpackedPath(), "bin", "mongod");
   if (os.platform() === "win32") {
@@ -62,10 +82,21 @@ const getMongodPath = () => {
 };
 
 const TESS_HOME = path.join(os.homedir(), "tesserae"); // application home
-const MONGO_INSTALL_PATH = getMongodUnpackedPath();
 const MONGOD_PATH = getMongodPath();
 const MONGODB_DBPATH = path.join(TESS_HOME, "tessdb");
 
+/**
+ * Initialize the loading screen
+ * @returns {Promise<null>}
+ * 
+ * The loading screen displays messages indicating what stages of application
+ * initialization have occurred. The messages are displayed in order such that
+ * the newest message comes beneath all of the others.
+ * 
+ * In order to allow the content of the loading screen to be changed at
+ * runtime, the webPreferences option is set to find loading screen changing
+ * code in preloadStartup.js.
+ */
 const loadStartupWindow = () => {
   return new Promise((resolve) => {
     startupWindow = new BrowserWindow({
@@ -87,6 +118,9 @@ const loadStartupWindow = () => {
   });
 };
 
+/**
+ * @param {string} msg a message to display on the loading screen
+ */
 const writeStartupMessage = (msg) => {
   console.log(msg);
   if (startupWindow !== null) {
@@ -94,6 +128,17 @@ const writeStartupMessage = (msg) => {
   }
 };
 
+/**
+ * Write an error message to the loading screen
+ * @param {string} msg an error message to display on the loading screen
+ * @param {*} err the error object that was thrown
+ * 
+ * If an error occurs during application initialization, all resources the
+ * application has taken so far should be freed, the error should be displayed
+ * on the loading screen, and the loading screen should remain however long the
+ * user wishes in order to read the error message. When the user closes the
+ * loading screen, the application should be completely shut down.
+ */
 const writeStartupError = (msg, err) => {
   console.error(msg);
   console.error(err);
@@ -105,6 +150,12 @@ const writeStartupError = (msg, err) => {
   }
 };
 
+/**
+ * Unzip a .zip file
+ * @param {string} zipPath path to .zip file
+ * @param {string} unzipPath path to where contents of .zip file should be placed
+ * @returns {Promise<null>}
+ */
 const getPromiseUnzip = (zipPath, unzipPath) => {
   return new Promise((resolve) => {
     yauzl.open(
@@ -166,6 +217,14 @@ const getPromiseUnzip = (zipPath, unzipPath) => {
   });
 };
 
+/**
+ * Decompress and untar a .tgz file
+ * @param {string} downloadDest path to .tgz file
+ * @returns {Promise<null>}
+ * 
+ * The contents of the .tgz file will be placed in the same directory as where
+ * the .tgz file is located.
+ */
 const getPromiseUntgz = (downloadDest) => {
   return new Promise((resolve) => {
     const downloadedFileStream = fs.createReadStream(downloadDest);
@@ -186,6 +245,10 @@ const getPromiseUntgz = (downloadDest) => {
   });
 };
 
+/**
+ * Unpack the downloaded MongoDB
+ * @param {str} downloadDest path to download location of MongoDB
+ */
 const unpackMongoInstall = async (downloadDest) => {
   writeStartupMessage(`\tMongoDB downloaded; now installing`);
   if (path.extname(downloadDest) === ".zip") {
@@ -196,6 +259,12 @@ const unpackMongoInstall = async (downloadDest) => {
   }
 };
 
+/**
+ * Download a file via https
+ * @param {string} downloadUrl URL of file to download
+ * @param {string} downloadDest path naming the location of the downloaded file
+ * @returns {Promise<null>}
+ */
 const getPromiseViaHttps = (downloadUrl, downloadDest) => {
   writeStartupMessage(`\tDownloading ${downloadUrl}`);
   var file = fs.createWriteStream(downloadDest);
@@ -222,6 +291,10 @@ const getPromiseViaHttps = (downloadUrl, downloadDest) => {
   });
 };
 
+/**
+ * Launch mongod in the background
+ * @param {Object} config MongoDB configuration
+ */
 const launchMongod = async (config) => {
   mkdirp.sync(MONGODB_DBPATH);
   const mongoPort = config["port"];
@@ -249,6 +322,10 @@ const launchMongod = async (config) => {
   });
 };
 
+/**
+ * Get MongoDB configuration
+ * @returns {Object} MongoDB configuration
+ */
 const getMongoConfig = () => {
   let mongoOptions = {
     "port": "40404",
@@ -267,12 +344,24 @@ const getMongoConfig = () => {
   return mongoOptions
 };
 
+/**
+ * Get a connection to MongoDB
+ * @param {Object} config MongoDB configuration
+ * @returns {MongoClient}
+ */
 const getMongoClient = config => {
   const mongoUrl = `mongodb://localhost:${config["port"]}`;
   const MongoClient = require('mongodb').MongoClient;
   return new MongoClient(mongoUrl, {"useUnifiedTopology": true});
 };
 
+/**
+ * Ping MongoDB
+ * @param {Object} config MongoDB configuration
+ * @returns {Promise<null>}
+ * 
+ * If pinging MongoDB fails, application initialization fails.
+ */
 const checkMongoConnection = (config) => {
   return new Promise((resolve) => {
     // Make sure that MongoDB server is reachable
@@ -287,6 +376,12 @@ const checkMongoConnection = (config) => {
   });
 };
 
+/**
+ * Install CLTK data for a specified language
+ * @param {string} lang language code
+ * 
+ * The backend server needs CLTK data to run.
+ */
 const installCltkData = async (lang) => {
   writeStartupMessage(`Ensuring data files for "${lang}" are installed`);
   const dataInstallPath = path.join(
@@ -310,6 +405,9 @@ const installCltkData = async (lang) => {
   }
 };
 
+/**
+ * Make sure the system is configured for the application to run
+ */
 const initializeUserSystem = async () => {
   await loadStartupWindow();
   writeStartupMessage(`Ensuring application directory exists (${TESS_HOME})`);
@@ -347,6 +445,9 @@ const initializeUserSystem = async () => {
   );
 };
 
+/**
+ * @returns {str} path to backend server executable
+ */
 const getPythonScriptPath = () => {
   if (!isRunningInBundle()) {
     return path.join(getResourcesPath(), PY_SRC_FOLDER, PY_MODULE + ".py");
@@ -361,6 +462,9 @@ const getPythonScriptPath = () => {
   return path.join(getResourcesPath(), PY_DIST_FOLDER, PY_MODULE);
 };
 
+/**
+ * Starts backend server as a subprocess of the application
+ */
 const startPythonSubprocess = () => {
   let script = getPythonScriptPath();
   if (isRunningInBundle()) {
@@ -373,6 +477,11 @@ const startPythonSubprocess = () => {
   }
 };
 
+/**
+ * Kill subprocesses of this instance
+ * @param {number} main_pid process ID of this instance
+ * @returns {Promise<null>}
+ */
 const killSubprocesses = main_pid => {
   const python_script_name = path.basename(getPythonScriptPath());
   let cleanup_completed = false;
@@ -406,6 +515,12 @@ const killSubprocesses = main_pid => {
   });
 };
 
+/**
+ * Create the main application window
+ * 
+ * Initially, the main window is invisible so that only the loading screen is
+ * visible to the user.
+ */
 const createMainWindow = () => {
   // Create the browser mainWindow
   mainWindow = new BrowserWindow({
@@ -431,6 +546,13 @@ const createMainWindow = () => {
   });
 };
 
+/**
+ * Display the main application window
+ * 
+ * Once the application has initialized and the system has been verified to be
+ * configured for the application, the loading screen will disappear, and the
+ * main window will be displayed.
+ */
 const revealMainWindow = () => {
   if (mainWindow !== null) {
     // Load the index page
