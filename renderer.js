@@ -143,7 +143,11 @@ const writeStartupError = (msg, err) => {
   console.error(msg);
   console.error(err);
   if (startupWindow !== null) {
-    startupWindow.webContents.send('error', msg, err.toString());
+    if (err !== null) {
+      startupWindow.webContents.send('error', msg, err.toString());
+    } else {
+      startupWindow.webContents.send('error', msg, '');
+    }
   }
   if (mainWindow !== null) {
     mainWindow.close();
@@ -603,6 +607,7 @@ app.on("window-all-closed", () => {
 app.on("activate", () => {
   // On macOS it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
+  // TODO figure out how to make sure that MongoDB is up and running
   if (subpy === null) {
     startPythonSubprocess();
   }
