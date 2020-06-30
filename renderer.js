@@ -493,7 +493,7 @@ const killSubprocesses = main_pid => {
   psTree(main_pid, function(err, children) {
     let to_kill = children
       .filter(function(el) {
-        command_name = 'COMMAND'
+        var command_name = 'COMMAND'
         if (os.platform() === 'darwin') {
           command_name = 'COMM'
         }
