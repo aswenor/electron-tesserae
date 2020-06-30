@@ -67,6 +67,9 @@ const getMongoDownloadUrl = () => {
  * @returns {string} path to directory where MongoDB application resides
  */
 const getMongodUnpackedPath = () => {
+  if (os.platform() === 'darwin') {
+    return path.join(TESS_HOME, 'mongodb-osx-x86_64-3.6.18'):
+  }
   return path.join(TESS_HOME, path.basename(getMongoDownloadUrl()).slice(0, -4));
 };
 

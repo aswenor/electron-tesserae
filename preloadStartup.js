@@ -21,9 +21,9 @@ window.addEventListener("DOMContentLoaded", () => {
       return
     }
     if (curLoad.length >= 6) {
-      document.getElementById("loading").innerHTML = "";
+      document.getElementById("loading").innerHTML = " ";
     } else {
-      document.getElementById("loading").innerHTML += " .";
+      document.getElementById("loading").innerHTML += ". ";
     }
     setTimeout(animateLoading, 1000);
   };
