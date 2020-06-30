@@ -51,7 +51,7 @@ const getMongoDownloadUrl = () => {
     return "https://fastdl.mongodb.org/win32/mongodb-win32-x86_64-2012plus-4.2.6.zip";
   }
   if (osname === "darwin") {
-    return "https://fastdl.mongodb.org/osx/mongodb-osx-ssl-x86_64-4.0.19.tgz";
+    return "https://fastdl.mongodb.org/osx/mongodb-osx-ssl-x86_64-3.6.18.tgz";
   }
   if (osname === "linux") {
     // assume Ubuntu 18.04 LTS
