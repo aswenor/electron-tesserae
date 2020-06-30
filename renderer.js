@@ -493,13 +493,17 @@ const killSubprocesses = main_pid => {
   psTree(main_pid, function(err, children) {
     let to_kill = children
       .filter(function(el) {
-        if (el.COMMAND.includes("mongod")) {
+        command_name = 'COMMAND'
+        if (os.platform() === 'darwin') {
+          command_name = 'COMM'
+        }
+        if (el[command_name].includes("mongod")) {
           return true;
         }
         if (isRunningInBundle()) {
-          return el.COMMAND === python_script_name;
+          return el[command_name] === python_script_name;
         }
-        return el.COMMAND === "python" && el.PPID === main_pid.toString();
+        return el[command_name] === "python" && el.PPID === main_pid.toString();
       })
       .map(function(p) {
         return p.PID;
