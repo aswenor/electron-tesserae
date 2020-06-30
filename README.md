@@ -49,7 +49,7 @@ Using administrator-mode command prompt, install git with Chocolatey (which shou
 choco install git
 ```
 
-You can run the rest of commands in a normal command prompt
+You can run the rest of the commands in a normal command prompt
 ```
 # cd into the directory where you would like to store the code
 git clone https://github.com/nOkuda/electron-tesserae        # clone this repo
@@ -67,6 +67,33 @@ python -m pip install -U pip
 cd electron-tesserae
 python -m pip install -r requirements.txt   # install python dependencies
 npm install                                 # install javascript dependencies
+```
+
+### Mac OSX
+
+Download and install https://nodejs.org/dist/v12.18.2/node-v12.18.2.pkg
+
+Also download and install https://www.python.org/ftp/python/3.8.3/python-3.8.3-macosx10.9.pkg
+
+You can run the rest of the commands in terminal
+```
+xcode-select --install	# this will open up another window to install the tools
+# cd into the directory where you would like to store the code
+git clone https://github.com/nOkuda/electron-tesserae        # clone this repo
+git clone https://github.com/jeffkinnison/tesserae-frontend  # clone frontend
+cd tesserae-frontend
+npm install     # install frontend dependencies
+# change .env file so that REACT_APP_REST_API_URL is set to "http://localhost:4040"
+# change package.json so that "homepage" is set to "./"
+npm run build   # build frontend
+cp -r build ../electron-tesserae/frontend    # bundle built frontend
+cd ..
+python3 -m venv etbuild           # create virtual environment
+source etbuild/bin/activate
+pip install -U pip
+cd electron-tesserae
+pip install -r requirements.txt   # install python dependencies
+npm install                       # install javascript dependencies
 ```
 
 ## Running in Development
