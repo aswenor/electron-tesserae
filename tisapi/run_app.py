@@ -8,6 +8,7 @@ import sys
 
 import apitess
 from tesserae.utils.coordinate import JobQueue
+from tesserae.utils.ingest import IngestQueue
 
 
 os.environ['HOME'] = os.path.expanduser('~/tesserae')
@@ -72,5 +73,7 @@ if __name__ == '__main__':
 
     a_searcher = JobQueue(2, db_cred)
     atexit.register(a_searcher.cleanup)
-    app = apitess.create_app(a_searcher, app_db_config)
+    ingest_queue = IngestQueue(db_cred)
+    atexit.register(ingest_queue.cleanup)
+    app = apitess.create_app(a_searcher, ingest_queue.cleanup, app_db_config)
     app.run(port=4040)
