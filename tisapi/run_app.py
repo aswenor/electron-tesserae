@@ -76,4 +76,7 @@ if __name__ == '__main__':
     ingest_queue = IngestQueue(db_cred)
     atexit.register(ingest_queue.cleanup)
     app = apitess.create_app(a_searcher, ingest_queue.cleanup, app_db_config)
+
+    apitess.texts.FILE_UPLOAD_DIR = os.path.expanduser('~/tessfiles')
+    os.makedirs(apitess.texts.FILE_UPLOAD_DIR, exist_ok=True)
     app.run(port=4040)
