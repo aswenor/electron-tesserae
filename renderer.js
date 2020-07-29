@@ -51,7 +51,7 @@ const getMongoDownloadUrl = () => {
     return "https://fastdl.mongodb.org/win32/mongodb-win32-x86_64-2012plus-4.2.6.zip";
   }
   if (osname === "darwin") {
-    return "https://fastdl.mongodb.org/osx/mongodb-osx-ssl-x86_64-3.6.18.tgz";
+    return "https://fastdl.mongodb.org/osx/mongodb-macos-x86_64-4.2.8.tgz";
   }
   if (osname === "linux") {
     // assume Ubuntu 18.04 LTS
@@ -67,9 +67,6 @@ const getMongoDownloadUrl = () => {
  * @returns {string} path to directory where MongoDB application resides
  */
 const getMongodUnpackedPath = () => {
-  if (os.platform() === 'darwin') {
-    return path.join(TESS_HOME, 'mongodb-osx-x86_64-3.6.18');
-  }
   return path.join(TESS_HOME, path.basename(getMongoDownloadUrl()).slice(0, -4));
 };
 
