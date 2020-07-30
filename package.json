@@ -66,9 +66,9 @@
     "yauzl": "^2.10.0"
   },
   "devDependencies": {
-    "electron": "^6.0.10",
-    "electron-builder": "^21.2.0",
-    "eslint": "^7.0.0",
+    "electron": "^9.1.2",
+    "electron-builder": "^22.8.0",
+    "eslint": "^7.5.0",
     "shx": "^0.3.2"
   }
 }
