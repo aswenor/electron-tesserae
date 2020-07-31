@@ -390,7 +390,7 @@ const checkMongoConnection = async (config) => {
   if (textsCount <= 0) {
     writeStartupMessage("MongoDB is empty");
     // need to get corpus dump
-    const corpusDumpDest = path.join(TESS_HOME, "archivedbasedump.gz");
+    const corpusDumpDest = path.join(TESS_HOME, path.basename(CORPUS_DUMP_URL));
     if (!fs.existsSync(corpusDumpDest)) {
       writeStartupMessage("Downloading base corpus");
       await getPromiseViaHttps(CORPUS_DUMP_URL, corpusDumpDest);
