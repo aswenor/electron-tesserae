@@ -26,7 +26,9 @@ const PY_SRC_FOLDER = "tisapi"; // path to the python source
 const PY_MODULE = "run_app"; // the name of the main module
 
 // electron thinks olivia's (actually, AddTrust's) certificate is expired
-const CORPUS_DUMP_URL = "https://tess-new.caset.buffalo.edu/standalone/basedumps/archivedbasedump20200731.gz";
+// const CORPUS_DUMP_URL = "https://tess-new.caset.buffalo.edu/standalone/basedumps/archivedbasedump20200731.gz";
+// for now, here is a temporary location for the database dump
+const CORPUS_DUMP_URL = "https://www.wjscheirer.com/misc/tesserae/archivedbasedump20200731.gz";
 
 /**
  * @returns {boolean} is this instance running in a pre-built executable?
