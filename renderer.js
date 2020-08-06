@@ -25,6 +25,11 @@ const PY_DIST_FOLDER = "dist-python"; // python distributable folder
 const PY_SRC_FOLDER = "tisapi"; // path to the python source
 const PY_MODULE = "run_app"; // the name of the main module
 
+// electron thinks olivia's (actually, AddTrust's) certificate is expired
+// const CORPUS_DUMP_URL = "https://tess-new.caset.buffalo.edu/standalone/basedumps/archivedbasedump20200731.gz";
+// for now, here is a temporary location for the database dump
+const CORPUS_DUMP_URL = "https://www.wjscheirer.com/misc/tesserae/archivedbasedump20200731.gz";
+
 /**
  * @returns {boolean} is this instance running in a pre-built executable?
  */
@@ -51,7 +56,7 @@ const getMongoDownloadUrl = () => {
     return "https://fastdl.mongodb.org/win32/mongodb-win32-x86_64-2012plus-4.2.6.zip";
   }
   if (osname === "darwin") {
-    return "https://fastdl.mongodb.org/osx/mongodb-osx-ssl-x86_64-3.6.18.tgz";
+    return "https://fastdl.mongodb.org/osx/mongodb-macos-x86_64-4.2.8.tgz";
   }
   if (osname === "linux") {
     // assume Ubuntu 18.04 LTS
@@ -67,9 +72,6 @@ const getMongoDownloadUrl = () => {
  * @returns {string} path to directory where MongoDB application resides
  */
 const getMongodUnpackedPath = () => {
-  if (os.platform() === 'darwin') {
-    return path.join(TESS_HOME, 'mongodb-osx-x86_64-3.6.18');
-  }
   return path.join(TESS_HOME, path.basename(getMongoDownloadUrl()).slice(0, -4));
 };
 
@@ -84,8 +86,20 @@ const getMongodPath = () => {
   return mongodPath;
 };
 
+/**
+ * @returns {string} path to mongorestore exectuable
+ */
+const getMongorestorePath = () => {
+  const mongodPath = path.join(getMongodUnpackedPath(), "bin", "mongorestore");
+  if (os.platform() === "win32") {
+    return mongodPath + ".exe";
+  }
+  return mongodPath;
+};
+
 const TESS_HOME = path.join(os.homedir(), "tesserae"); // application home
 const MONGOD_PATH = getMongodPath();
+const MONGORESTORE_PATH = getMongorestorePath();
 const MONGODB_DBPATH = path.join(TESS_HOME, "tessdb");
 
 /**
@@ -363,24 +377,56 @@ const getMongoClient = config => {
 };
 
 /**
- * Ping MongoDB
+ * Ping MongoDB and make sure it is populated
  * @param {Object} config MongoDB configuration
  * @returns {Promise<null>}
  * 
  * If pinging MongoDB fails, application initialization fails.
+ *
+ * If MongoDB is not populated, it will be populated with a base corpus. Any
+ * errors in downloading the base corpus or in populating it will cause
+ * application initialization to fail.
  */
-const checkMongoConnection = (config) => {
-  return new Promise((resolve) => {
-    // Make sure that MongoDB server is reachable
-    const client = getMongoClient(config);
-    client.connect(function(err) {
-      if (err === null) {
-        resolve();
-      } else {
-        writeStartupError("Could not connect to MongoDB", err);
-      }
-    });
-  });
+const checkMongoConnection = async (config) => {
+  const textsCount = await getMongoTextsCount(config)
+  if (textsCount <= 0) {
+    writeStartupMessage("MongoDB is empty");
+    // need to get corpus dump
+    const corpusDumpDest = path.join(TESS_HOME, path.basename(CORPUS_DUMP_URL));
+    if (!fs.existsSync(corpusDumpDest)) {
+      writeStartupMessage("Downloading base corpus");
+      await getPromiseViaHttps(CORPUS_DUMP_URL, corpusDumpDest);
+    }
+    try {
+      writeStartupMessage("Attempting to populate MongoDB");
+      // once corpus dump is obtained, load it into MongoDB
+      child_process.execFileSync(
+        MONGORESTORE_PATH,
+        [
+          `--port=${config["port"]}`,
+          '--gzip',
+          `--archive=${corpusDumpDest}`,
+          '--nsFrom="base.*"',
+          '--nsTo="tesserae.*"'
+        ]
+      );
+    } catch (err) {
+      writeStartupError("Could not populate MongoDB with base corpus", err);
+    }
+  }
+};
+
+const getMongoTextsCount = async (config) => {
+  const client = getMongoClient(config);
+  try {
+    var conn = await client.connect();
+    const textsCollection = conn.db('tesserae').collection('texts');
+    return await textsCollection.estimatedDocumentCount({});
+  } catch (err) {
+    writeStartupError("Could not connect to MongoDB", err);
+  } finally {
+    await client.close();
+  }
 };
 
 /**
@@ -444,6 +490,7 @@ const initializeUserSystem = async () => {
 
   writeStartupMessage(`Checking MongoDB connection`);
   await checkMongoConnection(config);
+  writeStartupMessage("MongoDB verification complete");
 
   await installCltkData("lat");
   await installCltkData("grc");
