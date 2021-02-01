@@ -58,6 +58,7 @@ git clone https://github.com/jeffkinnison/tesserae-frontend  # clone frontend
 cd tesserae-frontend
 npm install     # install frontend dependencies
 # change .env file so that REACT_APP_REST_API_URL is set to "http://localhost:4040"
+# also in the .env file, set REACT_APP_MODE to "ADMIN"
 # change package.json so that "homepage" is set to "./"
 npm run build   # build frontend
 Xcopy /E /I build ..\electron-tesserae\frontend    # bundle built frontend
@@ -85,6 +86,7 @@ git clone https://github.com/jeffkinnison/tesserae-frontend  # clone frontend
 cd tesserae-frontend
 npm install     # install frontend dependencies
 # change .env file so that REACT_APP_REST_API_URL is set to "http://localhost:4040"
+# also in the .env file, set REACT_APP_MODE to "ADMIN"
 # change package.json so that "homepage" is set to "./"
 npm run build   # build frontend
 cp -r build ../electron-tesserae/frontend    # bundle built frontend
