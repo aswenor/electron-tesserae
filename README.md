@@ -15,15 +15,18 @@ Unfortunately, each operating system is just different enough that the pre-steps
 Open up terminal and follow the instructions below.
 
 ```
-sudo apt install build-essentials python3-dev python3-venv nodejs npm   # install prerequisites
+sudo apt install build-essential python3-dev python3-venv nodejs npm   # install prerequisites
 # cd into the directory where you would like to store the code
-git clone https://github.com/nOkuda/electron-tesserae        # clone this repo
-git clone https://github.com/jeffkinnison/tesserae-frontend  # clone frontend
+git clone https://github.com/tesserae/electron-tesserae.git        # clone this repo
+git clone https://github.com/tesserae/tesserae-frontend.git        # clone frontend
 cd tesserae-frontend
 npm install     # install frontend dependencies
 # change .env file so that REACT_APP_REST_API_URL is set to "http://localhost:4040"
 # also in the .env file, set REACT_APP_MODE to "ADMIN"
+  # do this by running the command: vim .env
+  # then edit the file using vim commands (eg. i for insert, esc + :x to save and exit)
 # change package.json so that "homepage" is set to "./"
+  # add line to package.json that reads: "homepage": "./"
 npm run build   # build frontend
 cp -r build ../electron-tesserae/frontend    # bundle built frontend
 cd ..
@@ -53,13 +56,16 @@ choco install git
 You can run the rest of the commands in a normal command prompt
 ```
 # cd into the directory where you would like to store the code
-git clone https://github.com/nOkuda/electron-tesserae        # clone this repo
-git clone https://github.com/jeffkinnison/tesserae-frontend  # clone frontend
+git clone https://github.com/tesserae/electron-tesserae.git        # clone this repo
+git clone https://github.com/tesserae/tesserae-frontend.git        # clone frontend
 cd tesserae-frontend
 npm install     # install frontend dependencies
 # change .env file so that REACT_APP_REST_API_URL is set to "http://localhost:4040"
 # also in the .env file, set REACT_APP_MODE to "ADMIN"
+  # do this by running the command: vim .env
+  # then edit the file using vim commands (eg. i for insert, esc + :x to save and exit)
 # change package.json so that "homepage" is set to "./"
+  # add line to package.json that reads: "homepage": "./"
 npm run build   # build frontend
 Xcopy /E /I build ..\electron-tesserae\frontend    # bundle built frontend
 cd ..
@@ -81,13 +87,16 @@ You can run the rest of the commands in terminal
 ```
 xcode-select --install	# this will open up another window to install the tools
 # cd into the directory where you would like to store the code
-git clone https://github.com/nOkuda/electron-tesserae        # clone this repo
-git clone https://github.com/jeffkinnison/tesserae-frontend  # clone frontend
+git clone https://github.com/tesserae/electron-tesserae.git        # clone this repo
+git clone https://github.com/tesserae/tesserae-frontend.git        # clone frontend
 cd tesserae-frontend
 npm install     # install frontend dependencies
 # change .env file so that REACT_APP_REST_API_URL is set to "http://localhost:4040"
 # also in the .env file, set REACT_APP_MODE to "ADMIN"
+  # do this by running the command: vim .env
+  # then edit the file using vim commands (eg. i for insert, esc + :x to save and exit)
 # change package.json so that "homepage" is set to "./"
+  # add line to package.json that reads: "homepage": "./"
 npm run build   # build frontend
 cp -r build ../electron-tesserae/frontend    # bundle built frontend
 cd ..
@@ -112,6 +121,12 @@ npm run package
 ```
 
 The executable should be in `dist`.
+To run the executable, find the file with the .AppImage extension in the `dist` directory
+
+```
+chmod +x file.AppImage
+./file.AppImage
+```
 
 ## Other Hints
 
